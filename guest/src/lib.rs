@@ -56,7 +56,7 @@ pub fn preprocess_fib() -> (Program, JoltPreprocessing<F, G>) {
     program.set_func("fib");
     let (bytecode, memory_init) = program.decode();
     let preprocessing: JoltPreprocessing<F, G> =
-        RV32IJoltVM::preprocess(bytecode, memory_init, 1 << 20, 1 << 20, 1 << 24);
+        RV32IJoltVM::preprocess(bytecode, memory_init, 1 << 10, 1 << 10, 1 << 14);
     (program, preprocessing)
 }
 
