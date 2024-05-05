@@ -1,21 +1,16 @@
-#![cfg_attr(feature = "guest", no_std)]
-#![no_main]
-
-extern crate alloc;
-
-use alloc::rc::Rc;
-use alloc::vec::Vec;
-
 use jolt_core::{
-    host::Program,
-    jolt::vm::{rv32i_vm::RV32IJoltVM, Jolt, JoltPreprocessing},
+    host::Program, instruction::add::ADDInstruction, tracer, BytecodeRow, Jolt, JoltCommitments,
+    JoltField, JoltPreprocessing, MemoryOp, RV32IJoltProof, RV32IJoltVM,
+    MEMORY_OPS_PER_INSTRUCTION, RV32I,
 };
-use jolt_sdk::{postcard, Proof, F, G, RV32IM};
 
-pub fn build_fib() -> (impl Fn(u32) -> (u128, Proof), impl Fn(Proof) -> bool) {
+pub fn build_fib() -> (
+    impl Fn(u32) -> (u128, jolt::Proof),
+    impl Fn(jolt::Proof) -> bool,
+) {
     let (program, preprocessing) = preprocess_fib();
-    let program = Rc::new(program);
-    let preprocessing = Rc::new(preprocessing);
+    let program = std::rc::Rc::new(program);
+    let preprocessing = std::rc::Rc::new(preprocessing);
     let program_cp = program.clone();
     let preprocessing_cp = preprocessing.clone();
     let prove_closure = move |n: u32| {
@@ -23,14 +18,13 @@ pub fn build_fib() -> (impl Fn(u32) -> (u128, Proof), impl Fn(Proof) -> bool) {
         let preprocessing = (*preprocessing).clone();
         prove_fib(program, preprocessing, n)
     };
-    let verify_closure = move |proof: Proof| {
-        let _program = (*program_cp).clone();
+    let verify_closure = move |proof: jolt::Proof| {
+        let program = (*program_cp).clone();
         let preprocessing = (*preprocessing_cp).clone();
         RV32IJoltVM::verify(preprocessing, proof.proof, proof.commitments).is_ok()
     };
     (prove_closure, verify_closure)
 }
-
 pub fn fib(n: u32) -> u128 {
     {
         let mut a: u128 = 0;
@@ -45,26 +39,40 @@ pub fn fib(n: u32) -> u128 {
     }
 }
 
-pub fn analyze_fib(n: u32) -> (usize, Vec<(RV32IM, usize)>) {
-    let mut program = Program::new("guest");
+pub fn analyze_fib(n: u32) -> jolt::host::analyze::ProgramSummary {
+    let mut program = Program::new("fibonacci-guest");
+    program.set_func("fib");
+    program.set_std(false);
+    program.set_memory_size(10485760u64);
+    program.set_stack_size(4096u64);
+    program.set_max_input_size(4096u64);
+    program.set_max_output_size(4096u64);
     program.set_input(&n);
-    program.trace_analyze()
+    program.trace_analyze::<jolt::F>()
 }
 
-pub fn preprocess_fib() -> (Program, JoltPreprocessing<F, G>) {
-    let mut program = Program::new("guest");
+pub fn preprocess_fib() -> (
+    jolt::host::Program,
+    jolt::JoltPreprocessing<jolt::F, jolt::CommitmentScheme>,
+) {
+    let mut program = Program::new("fibonacci-guest");
     program.set_func("fib");
+    program.set_std(false);
+    program.set_memory_size(10485760u64);
+    program.set_stack_size(4096u64);
+    program.set_max_input_size(4096u64);
+    program.set_max_output_size(4096u64);
     let (bytecode, memory_init) = program.decode();
-    let preprocessing: JoltPreprocessing<F, G> =
-        RV32IJoltVM::preprocess(bytecode, memory_init, 1 << 10, 1 << 10, 1 << 14);
+    let preprocessing: JoltPreprocessing<jolt::F, jolt::CommitmentScheme> =
+        RV32IJoltVM::preprocess(bytecode, memory_init, 1 << 20, 1 << 20, 1 << 24);
     (program, preprocessing)
 }
 
 pub fn prove_fib(
-    mut program: Program,
-    preprocessing: JoltPreprocessing<F, G>,
+    mut program: jolt::host::Program,
+    preprocessing: jolt::JoltPreprocessing<jolt::F, jolt::CommitmentScheme>,
     n: u32,
-) -> (u128, Proof) {
+) -> (u128, jolt::Proof) {
     program.set_input(&n);
     let (io_device, bytecode_trace, instruction_trace, memory_trace, circuit_flags) =
         program.trace();
@@ -77,8 +85,8 @@ pub fn prove_fib(
         circuit_flags,
         preprocessing,
     );
-    let ret_val = postcard::from_bytes::<u128>(&output_bytes).unwrap();
-    let proof = Proof {
+    let ret_val = jolt::postcard::from_bytes::<u128>(&output_bytes).unwrap();
+    let proof = jolt::Proof {
         proof: jolt_proof,
         commitments: jolt_commitments,
     };

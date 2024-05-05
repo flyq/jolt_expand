@@ -12,4 +12,4 @@ guest = []
 
 [dependencies]
 jolt-core = { git = "https://github.com/a16z/jolt" }
-jolt-sdk = { git = "https://github.com/a16z/jolt" }
+jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host"] }
